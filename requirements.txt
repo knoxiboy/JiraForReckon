@@ -1,0 +1,11 @@
+flask
+flask-cors
+python-dotenv
+google-genai
+langgraph
+gitpython
+docker
+fastapi
+uvicorn
+pydantic
+requests
