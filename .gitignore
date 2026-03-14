@@ -32,6 +32,7 @@ frontend/.env.production.local
 # Project Specific
 test_results.txt
 test_results_fail.txt
+test_output.txt
+test_result.log
 logs/
 *.log
-

@@ -4,27 +4,39 @@ This matrix maps each hackathon requirement to the specific component in the Jir
 
 | ID | Requirement | Implementation Component | Evidence / Artifact |
 |:---|:---|:---|:---|
-| **M1** | GitHub Integration | `RetrieverAgent` | `src/agents/retriever.py` |
-| **M2** | MCP Integration | `RetrieverAgent` + GitKraken MCP | `src/agents/retriever.py` |
-| **M3** | AI Agents (Multi-step) | LangGraph `StateGraph` | `src/orchestrator.py` |
+| **M1** | GitHub Integration | `RetrieverAgent` + GitHub MCP Server | `src/mcp_servers/github_server.py`, `src/agents/retriever.py` |
+| **M2** | MCP Integration (≥1 server) | Jira MCP Server + GitHub MCP Server | `src/mcp_servers/jira_server.py`, `src/mcp_servers/github_server.py`, `src/mcp_client.py` |
+| **M3** | AI Agents (Multi-step) | LangGraph `StateGraph` (5 nodes) | `src/orchestrator.py` |
 | **M4** | AI APIs (Gemini) | `call_gemini` utility | `src/utils.py` |
 | **F1** | Requirement Parsing | `RequirementsAgent` | `src/agents/parser.py` |
-| **F2** | Structured Verdict | `SynthesisAgent` | `src/agents/synthesis.py` |
-| **F3** | Evidence Mapping | `EvaluatorAgent` (Line/Path focus) | `src/agents/evaluator.py` |
-| **O1** | Custom Test Gen | `VerificationAgent` | `src/agents/verification.py` |
+| **F2** | Structured Verdict (Pass/Partial/Fail) | `SynthesisAgent` | `src/agents/synthesis.py` |
+| **F3** | Evidence Mapping (file, line, snippet) | `EvaluatorAgent` + traceability map | `src/agents/evaluator.py` |
+| **O1** | Custom Test Generation + Execution | `VerificationAgent` (subprocess) | `src/agents/verification.py` |
 | **O2** | Dashboard UI | React Dashboard | `frontend/src/App.tsx` |
-| **O3** | Confidence Score | `SynthesisAgent` scoring logic | `src/agents/synthesis.py` |
+| **O3** | Confidence Score (data-driven) | `SynthesisAgent` (3-dimension scoring) | `src/agents/synthesis.py` |
 
-## Mapping Summary
+## Ticket Type Support
 
-### Feature: Feature Request
-- **AC Parsing**: Handled by `parser.py` node.
-- **Diff Logic**: Validated in `evaluator.py` node.
-- **Traceability**: Output results contain specific `evidence` arrays (e.g., `["src/auth.ts:L45-L60"]`).
+| Type | Handled By | Demo Example |
+|:-----|:-----------|:-------------|
+| Feature Request | Parser → Evaluator (AC matching) | `examples/sample_cases.md` → PROJ-101 |
+| Bug Report | Evaluator (regression focus) + Verification (fix validation) | `examples/sample_cases.md` → PROJ-202 |
+| Refactor/Cleanup | Evaluator (side-effect analysis) | `examples/sample_cases.md` → PROJ-303 |
 
-### Feature: Bug Report
-- **Regression Check**: Evaluator Agent prioritizes finding missing fixes in the diff.
-- **Verification**: `verification.py` generates a regression test script to verify the fix outcome.
+## MCP Tool Inventory
 
-### Feature: Refactor
-- **Side-Effect Analysis**: Evaluator Agent checks for unintended logic changes outside the refactor scope.
+### Jira MCP Server (3 tools)
+| Tool | Purpose |
+|:-----|:--------|
+| `get_jira_ticket` | Fetch ticket with ADF → plaintext description parsing |
+| `get_jira_ticket_comments` | Fetch comments for additional context |
+| `search_jira_tickets` | JQL search for related tickets |
+
+### GitHub MCP Server (5 tools)
+| Tool | Purpose |
+|:-----|:--------|
+| `get_pull_request` | PR metadata (title, body, branches, stats) |
+| `get_pull_request_diff` | Full unified diff (50K char limit) |
+| `get_pull_request_files` | Changed files with per-file patches |
+| `get_pull_request_reviews` | Code reviews and approval status |
+| `get_file_content` | File content at any ref/branch |
