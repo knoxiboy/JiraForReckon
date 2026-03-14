@@ -1,16 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
 import { 
-  ClipboardCheck, 
   Github, 
   Ticket, 
   Play, 
   Loader2, 
   CheckCircle2, 
-  AlertCircle, 
-  XCircle,
   ChevronRight,
   Activity,
-  Code
+  Code,
+  Settings,
+  History,
+  Terminal,
+  Cpu,
+  Layers,
+  AlertCircle,
+  Database,
+  FileCheck,
+  Code2,
+  ShieldCheck,
+  Eye,
+  Search,
+  Bell,
+  Share2,
+  FileCode,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -32,239 +46,375 @@ interface EvaluationResult {
   logs: string[];
 }
 
+const API_BASE = 'http://localhost:5000/api';
+
 function App() {
-  const [jiraKey, setJiraKey] = useState('');
-  const [prUrl, setPrUrl] = useState('');
+  const [jiraKey, setJiraKey] = useState('ENG-12903-AUTH-FIX');
+  const [prUrl, setPrUrl] = useState('https://github.com/org/repo/pull/442');
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [result, setResult] = useState<EvaluationResult | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [currentStep, setCurrentStep] = useState(0); // 0: Idle, 1: Retriever, 2: Parser, 3: Evaluator, 4: Verification, 5: Synthesis
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [logs]);
 
   const handleEvaluate = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsEvaluating(true);
     setResult(null);
+    setCurrentStep(1);
+    setLogs(['[SYSTEM] Initializing evaluation pipeline...', '[AGENT] Spinning up orchestrator...']);
 
-    // TODO: Connect to backend API
-    // For now, simulate evaluation
-    setTimeout(() => {
-      setResult({
+    try {
+      // Simulate pipeline progression for UI visual
+      setTimeout(() => setCurrentStep(2), 2000);
+      setTimeout(() => setCurrentStep(3), 4000);
+      setTimeout(() => setCurrentStep(4), 6000);
+
+      const response = await axios.post(`${API_BASE}/evaluate`, {
         jira_key: jiraKey,
-        pr_url: prUrl,
-        overall_verdict: 'Partial',
-        confidence_score: 0.85,
-        requirements: [
-          {
-            id: 'REQ-1',
-            description: 'Implement user authentication using JWT',
-            verdict: 'Pass',
-            reasoning: 'Authentication logic found in src/auth.ts and validated.',
-            evidence: ['src/auth.ts:L45-L60']
-          },
-          {
-            id: 'REQ-2',
-            description: 'Add unit tests for the login flow',
-            verdict: 'Fail',
-            reasoning: 'No new test files found in the PR diff.',
-            evidence: []
-          }
-        ],
-        logs: [
-          'Retriever: Fetched Jira PROJ-123 and GitHub PR #45',
-          'Parser: Extracted 2 requirements from Jira description',
-          'Evaluator: Comparing PR diff against requirements...',
-          'Verification: Failed to find test evidence for REQ-2',
-          'Synthesis: Evaluation complete.'
-        ]
+        pr_url: prUrl
       });
+      
+      setCurrentStep(5);
+      setResult(response.data);
+      if (response.data.logs) {
+        setLogs(prev => [...prev, ...response.data.logs, '[SYSTEM] Evaluation complete.']);
+      }
+    } catch (error: any) {
+      console.error(error);
+      setLogs(prev => [...prev, `[ERROR] ${error.message}`]);
+      setCurrentStep(0);
+    } finally {
       setIsEvaluating(false);
-    }, 3000);
+    }
   };
 
   return (
-    <div className="min-h-screen p-8 max-w-6xl mx-auto">
-      {/* Header */}
-      <header className="flex items-center justify-between mb-12">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-600 rounded-lg">
-            <ClipboardCheck className="w-8 h-8 text-white" />
+    <div className="stitch-app">
+      
+      {/* 1. Sidebar */}
+      <aside className="stitch-sidebar">
+        <div className="flex items-center gap-3 px-2 mb-10">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--accent)' }}>
+            <ShieldCheck className="text-white w-5 h-5" />
           </div>
-          <h1 className="text-3xl font-bold gradient-text">Jira Ticket Evaluator</h1>
-        </div>
-        <div className="flex items-center gap-4 text-gray-400">
-          <Github className="w-6 h-6 hover:text-white cursor-pointer transition-colors" />
-        </div>
-      </header>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Column: Form & Status */}
-        <div className="lg:col-span-12">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="glass-card mb-8"
-          >
-            <form onSubmit={handleEvaluate} className="flex flex-col md:flex-row gap-6 items-end">
-              <div className="flex-1 space-y-2 w-full">
-                <label className="text-sm font-medium text-gray-400 flex items-center gap-2">
-                  <Ticket className="w-4 h-4" /> Jira Ticket Key
-                </label>
-                <input 
-                  type="text" 
-                  value={jiraKey}
-                  onChange={(e) => setJiraKey(e.target.value)}
-                  placeholder="e.g. PROJ-123"
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                  required
-                />
-              </div>
-              <div className="flex-1 space-y-2 w-full">
-                <label className="text-sm font-medium text-gray-400 flex items-center gap-2">
-                  <Github className="w-4 h-4" /> GitHub PR URL
-                </label>
-                <input 
-                  type="url" 
-                  value={prUrl}
-                  onChange={(e) => setPrUrl(e.target.value)}
-                  placeholder="https://github.com/user/repo/pull/45"
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                  required
-                />
-              </div>
-              <button 
-                type="submit"
-                disabled={isEvaluating}
-                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 px-8 rounded-xl flex items-center gap-2 transition-all active:scale-95 whitespace-nowrap"
-              >
-                {isEvaluating ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <Play className="w-5 h-5" />
-                )}
-                {isEvaluating ? 'Evaluating...' : 'Evaluate PR'}
-              </button>
-            </form>
-          </motion.div>
+          <span className="font-bold text-lg tracking-tight text-white">Evaluator</span>
         </div>
 
-        {/* Evaluation Output Grid */}
-        <AnimatePresence>
-          {result && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="lg:col-span-12 grid grid-cols-1 lg:grid-cols-12 gap-8"
-            >
-              {/* Verdict Summary Card */}
-              <div className="lg:col-span-4">
-                <div className="glass-card h-full border-t-4 border-t-yellow-500">
-                  <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-xl font-bold">Overall Verdict</h2>
-                    <span className="px-3 py-1 bg-yellow-500/20 text-yellow-500 rounded-full text-xs font-bold tracking-wider uppercase">
-                      {result.overall_verdict}
-                    </span>
-                  </div>
-                  
-                  <div className="flex flex-col items-center justify-center p-8 bg-black/20 rounded-2xl mb-6">
-                    <div className="text-5xl font-bold mb-2">{(result.confidence_score * 100).toFixed(0)}%</div>
-                    <div className="text-gray-400 text-sm uppercase tracking-widest">Confidence Score</div>
-                  </div>
+        <nav className="flex-1 flex flex-col gap-2">
+          <a className="sidebar-link active" href="#">
+            <Layers className="w-4 h-4" />
+            <span>Dashboard</span>
+          </a>
+          <a className="sidebar-link" href="#">
+            <History className="w-4 h-4" />
+            <span>History</span>
+          </a>
+          <a className="sidebar-link" href="#">
+            <Terminal className="w-4 h-4" />
+            <span>Logs</span>
+          </a>
+          <a className="sidebar-link" href="#">
+            <Settings className="w-4 h-4" />
+            <span>Settings</span>
+          </a>
+        </nav>
 
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center">
-                        <CheckCircle2 className="w-5 h-5 text-green-500" />
-                      </div>
-                      <div className="text-sm">
-                        <div className="font-bold">1/2 Requirements Met</div>
-                        <div className="text-gray-400 text-xs">Based on line-by-line analysis</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Requirement Breakdown */}
-              <div className="lg:col-span-8 flex flex-col gap-6">
-                {result.requirements.map((req, idx) => (
-                  <motion.div 
-                    key={req.id}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: idx * 0.1 }}
-                    className="glass-card"
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-white/5 rounded-lg border border-white/10">
-                          <Activity className="w-5 h-5 text-blue-400" />
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-lg">{req.description}</h3>
-                          <span className="text-xs text-gray-500 font-mono">{req.id}</span>
-                        </div>
-                      </div>
-                      <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase ${
-                        req.verdict === 'Pass' ? 'bg-green-500/20 text-green-500' : 
-                        req.verdict === 'Fail' ? 'bg-red-500/20 text-red-500' : 
-                        'bg-yellow-500/20 text-yellow-500'
-                      }`}>
-                        {req.verdict === 'Pass' && <CheckCircle2 className="w-3 h-3" />}
-                        {req.verdict === 'Fail' && <XCircle className="w-3 h-3" />}
-                        {req.verdict === 'Partial' && <AlertCircle className="w-3 h-3" />}
-                        {req.verdict}
-                      </div>
-                    </div>
-                    
-                    <p className="text-gray-400 text-sm mb-4 leading-relaxed italic">
-                      " {req.reasoning} "
-                    </p>
-
-                    {req.evidence.length > 0 && (
-                      <div className="flex items-center gap-2 pt-4 border-t border-white/5">
-                        <Code className="w-4 h-4 text-gray-500" />
-                        <div className="flex flex-wrap gap-2">
-                          {req.evidence.map(ev => (
-                            <span key={ev} className="text-[10px] font-mono bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20">
-                              {ev}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Processing Logs */}
-        {isEvaluating && (
-          <div className="lg:col-span-12 mt-8">
-            <div className="bg-black/80 border border-white/10 rounded-2xl p-6 font-mono text-sm">
-              <div className="flex items-center gap-2 mb-4 text-blue-400">
-                <Activity className="w-4 h-4 animate-pulse" />
-                <span>Agent Execution Logs</span>
-              </div>
-              <div className="space-y-2 h-40 overflow-y-auto custom-scrollbar">
-                {[
-                  'Retriever: Fetched Jira PROJ-123 and GitHub PR #45',
-                  'Parser: Extracted 2 requirements from Jira description',
-                  'Evaluator: Comparing PR diff against requirements...',
-                ].map((log, i) => (
-                  <div key={i} className="flex gap-4 text-gray-500">
-                    <span className="text-blue-500/50">[{new Date().toLocaleTimeString()}]</span>
-                    <span>{log}</span>
-                  </div>
-                ))}
-                <div className="flex gap-4 text-white animate-pulse">
-                  <span className="text-blue-500/50">[{new Date().toLocaleTimeString()}]</span>
-                  <span>Evaluator: Analyzing logical flow in src/auth.ts...</span>
-                </div>
-              </div>
+        <div className="mt-auto pt-4 border-t border-white/10">
+          <div className="flex items-center gap-3 px-2 py-3">
+            <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden" style={{ border: '2px solid rgba(99, 102, 241, 0.2)' }}>
+               <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" alt="Avatar" />
+            </div>
+            <div className="text-xs">
+              <p className="font-bold text-white">Dev Alex</p>
+              <p className="text-slate-500">Premium Plan</p>
             </div>
           </div>
+        </div>
+      </aside>
+
+      {/* 2. Main Workspace */}
+      <main className="stitch-main custom-scrollbar">
+        <header className="h-16 border-b border-white/10 px-8 flex items-center justify-between sticky top-0 bg-[#0B0F19cc] backdrop-blur-md z-20">
+          <div className="flex items-center gap-4">
+            <h2 className="text-sm font-semibold text-slate-400">Project / Evaluator</h2>
+            <span className="text-slate-600">/</span>
+            <h1 className="text-sm font-medium text-white">Live Dashboard</h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={handleEvaluate}
+              disabled={isEvaluating}
+              className="stitch-button-primary"
+            >
+              {isEvaluating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+              {isEvaluating ? 'Evaluating...' : 'Run Evaluation'}
+            </button>
+            <button className="p-2 text-slate-400 hover:text-white transition-all" style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
+              <Bell className="w-5 h-5" />
+            </button>
+          </div>
+        </header>
+
+        <div className="p-8 flex flex-col gap-6 mx-auto w-full pb-24" style={{ maxWidth: '1400px' }}>
+          
+          {/* Inputs Section */}
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="glass-card p-5 flex flex-col gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">GitHub Pull Request URL</label>
+              <div className="stitch-input-container">
+                <Github className="w-4 h-4 text-slate-500" />
+                <input 
+                  className="stitch-input" 
+                  value={prUrl}
+                  onChange={(e) => setPrUrl(e.target.value)}
+                  placeholder="Enter PR URL..."
+                />
+              </div>
+            </div>
+            <div className="glass-card p-5 flex flex-col gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Jira Ticket ID</label>
+              <div className="stitch-input-container">
+                <Ticket className="w-4 h-4 text-slate-500" />
+                <input 
+                  className="stitch-input" 
+                  value={jiraKey}
+                  onChange={(e) => setJiraKey(e.target.value)}
+                  placeholder="Enter Jira ID..."
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Pipeline Section */}
+          <section className="glass-card p-8">
+            <h3 className="text-xs font-bold text-slate-500 mb-10 uppercase tracking-widest">Agent Execution Pipeline</h3>
+            <div className="flex items-center justify-between gap-2 px-10">
+              {/* Retriever */}
+              <div className="pipeline-node">
+                <div className={`node-circle ${currentStep >= 1 ? 'completed' : ''} ${currentStep === 1 ? 'active' : ''}`}>
+                  <Database className={`w-5 h-5 ${currentStep >= 1 ? 'text-white' : 'text-slate-500'}`} />
+                  {currentStep >= 2 && (
+                    <div className="absolute rounded-full border-2 flex items-center justify-center" style={{ bottom: '-4px', right: '-4px', width: '16px', height: '16px', backgroundColor: 'var(--success)', borderColor: 'var(--background)' }}>
+                      <Check className="w-2.5 h-2.5 text-white" />
+                    </div>
+                  )}
+                </div>
+                <span className={`text-xs font-bold ${currentStep >= 1 ? 'text-white' : 'text-slate-500'} tracking-widest uppercase`}>Retriever</span>
+              </div>
+
+              <div className={`pipeline-connector ${currentStep >= 2 ? 'active' : ''}`} />
+
+              {/* Parser */}
+              <div className="pipeline-node">
+                <div className={`node-circle ${currentStep >= 2 ? 'completed' : ''} ${currentStep === 2 ? 'active' : ''}`}>
+                  <Code2 className={`w-5 h-5 ${currentStep >= 2 ? 'text-white' : 'text-slate-500'}`} />
+                  {currentStep >= 3 && (
+                    <div className="absolute rounded-full border-2 flex items-center justify-center" style={{ bottom: '-4px', right: '-4px', width: '16px', height: '16px', backgroundColor: 'var(--success)', borderColor: 'var(--background)' }}>
+                      <Check className="w-2.5 h-2.5 text-white" />
+                    </div>
+                  )}
+                </div>
+                <span className={`text-xs font-bold ${currentStep >= 2 ? 'text-white' : 'text-slate-500'} tracking-widest uppercase`}>Parser</span>
+              </div>
+
+              <div className={`pipeline-connector ${currentStep >= 3 ? 'active' : ''}`} />
+
+              {/* Evaluator */}
+              <div className="pipeline-node">
+                <div className={`node-circle ${currentStep >= 3 ? 'completed' : ''} ${currentStep === 3 ? 'active' : ''}`}>
+                  <Cpu className={`w-5 h-5 ${currentStep >= 3 ? 'text-white' : 'text-slate-500'}`} />
+                  {currentStep >= 4 && (
+                    <div className="absolute rounded-full border-2 flex items-center justify-center" style={{ bottom: '-4px', right: '-4px', width: '16px', height: '16px', backgroundColor: 'var(--success)', borderColor: 'var(--background)' }}>
+                      <Check className="w-2.5 h-2.5 text-white" />
+                    </div>
+                  )}
+                </div>
+                <span className={`text-xs font-bold ${currentStep >= 3 ? 'text-white' : 'text-slate-500'} tracking-widest uppercase`}>Evaluator</span>
+              </div>
+
+              <div className={`pipeline-connector ${currentStep >= 4 ? 'active' : ''}`} />
+
+              {/* Verification */}
+              <div className="pipeline-node">
+                <div className={`node-circle ${currentStep >= 4 ? 'completed' : ''} ${currentStep === 4 ? 'active' : ''}`}>
+                  <Layers className={`w-5 h-5 ${currentStep >= 4 ? 'text-white' : 'text-slate-500'}`} />
+                  {currentStep >= 5 && (
+                    <div className="absolute rounded-full border-2 flex items-center justify-center" style={{ bottom: '-4px', right: '-4px', width: '16px', height: '16px', backgroundColor: 'var(--success)', borderColor: 'var(--background)' }}>
+                      <Check className="w-2.5 h-2.5 text-white" />
+                    </div>
+                  )}
+                </div>
+                <span className={`text-xs font-bold ${currentStep >= 4 ? 'text-white' : 'text-slate-500'} tracking-widest uppercase`}>Verification</span>
+              </div>
+
+              <div className={`pipeline-connector ${currentStep >= 5 ? 'active' : ''}`} />
+
+              {/* Synthesis */}
+              <div className="pipeline-node">
+                <div className={`node-circle ${currentStep >= 5 ? 'completed' : ''} ${currentStep === 5 ? 'active' : ''}`}>
+                  <FileCheck className={`w-5 h-5 ${currentStep >= 5 ? 'text-white' : 'text-slate-500'}`} />
+                </div>
+                <span className={`text-xs font-bold ${currentStep >= 5 ? 'text-white' : 'text-slate-500'} tracking-widest uppercase`}>Synthesis</span>
+              </div>
+            </div>
+          </section>
+
+          {/* Result Summary */}
+          <AnimatePresence>
+            {result && (
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-6">
+                <div className={`glass-card p-8 flex items-center justify-between ${result.overall_verdict === 'Pass' ? 'glow-success' : ''}`}>
+                  <div className="flex items-center gap-10">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">System Verdict</span>
+                      <h2 className="verdict-text" style={{ color: result.overall_verdict === 'Pass' ? 'var(--success)' : 'var(--error)' }}>
+                        {result.overall_verdict.toUpperCase()}
+                      </h2>
+                    </div>
+                    <div className="h-16 w-px bg-white/10" />
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Confidence</span>
+                      <h2 className="text-4xl font-bold text-white leading-none">
+                        {Math.round(result.confidence_score * 100)}<span className="font-medium text-2xl" style={{ color: 'var(--accent)' }}>%</span>
+                      </h2>
+                    </div>
+                  </div>
+                  <div className="text-right flex flex-col items-end gap-2">
+                    <p className="text-xs text-slate-500 uppercase font-bold tracking-widest">Analysis Time: 12.4s</p>
+                    <div className="flex gap-1">
+                      <div className="h-1.5 w-6 rounded-full" style={{ backgroundColor: 'var(--success)', boxShadow: '0 0 8px var(--success)' }} />
+                      <div className="h-1.5 w-6 rounded-full" style={{ backgroundColor: 'var(--success)', boxShadow: '0 0 8px var(--success)' }} />
+                      <div className="h-1.5 w-6 rounded-full" style={{ backgroundColor: 'var(--success)', boxShadow: '0 0 8px var(--success)' }} />
+                      <div className="h-1.5 w-6 rounded-full bg-white/10" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Requirements Table */}
+                <div className="glass-card overflow-hidden">
+                  <div className="px-6 py-4 border-b border-white/10 bg-white/5 flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-white">Requirement Traceability</h4>
+                    <span className="text-xs text-slate-500 font-bold uppercase tracking-widest">{result.requirements.length} Criteria Identified</span>
+                  </div>
+                  <table className="stitch-table">
+                    <thead>
+                      <tr>
+                        <th>Requirement ID</th>
+                        <th>Description</th>
+                        <th style={{ textAlign: 'center' }}>Status</th>
+                        <th style={{ textAlign: 'right' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.requirements.map((req, i) => (
+                        <tr key={i}>
+                          <td className="font-mono text-xs font-bold" style={{ color: 'var(--accent)' }}>{req.id}</td>
+                          <td className="text-slate-200">{req.description}</td>
+                          <td>
+                            <div className="flex justify-center">
+                              <span className={`status-badge ${req.verdict === 'Pass' ? 'pass' : 'fail'}`}>
+                                {req.verdict === 'Pass' ? 'VERIFIED' : req.verdict === 'Fail' ? 'REJECTED' : 'UNCERTAIN'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="text-right">
+                            <button className="text-slate-400 hover:text-white transition-all" style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                              {req.verdict === 'Pass' ? <Eye className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Visual Analysis Section */}
+                <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Graph */}
+                  <div className="glass-card p-6 h-[400px] flex flex-col">
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-8 flex items-center gap-2">
+                      <Share2 className="w-3.5 h-3.5" /> Dependency Graph
+                    </h4>
+                    <div className="flex-1 border border-white/5 rounded-lg bg-surface flex items-center justify-center relative overflow-hidden" style={{ background: 'rgba(11, 15, 25, 0.4)' }}>
+                       <div className="absolute inset-0 opacity-[0.03]" style={{backgroundImage: 'radial-gradient(#6366F1 1px, transparent 1px)', backgroundSize: '16px 16px'}} />
+                       <div className="relative z-10 flex flex-col items-center gap-10">
+                          <div className="p-3 bg-white/5 border border-white/10 rounded text-xs font-bold shadow-xl" style={{ color: 'var(--accent)', borderColor: 'rgba(99, 102, 241, 0.3)' }}>
+                            {result.requirements[0]?.id || 'REQ-MAIN'}
+                          </div>
+                          <div className="w-px h-10" style={{ backgroundColor: 'rgba(99, 102, 241, 0.3)' }} />
+                          <div className="flex gap-4">
+                            <div className="p-2 bg-surface border border-white/10 rounded text-xs text-slate-400">auth.service.ts</div>
+                            <div className="p-2 bg-surface border border-white/10 rounded text-xs text-slate-400">login.routes.ts</div>
+                          </div>
+                       </div>
+                    </div>
+                  </div>
+
+                  {/* Code View */}
+                  <div className="glass-card flex flex-col h-[400px]">
+                    <div className="px-5 py-3 border-b border-white/10 flex items-center justify-between bg-white/5">
+                      <div className="flex items-center gap-3">
+                        <FileCode className="w-4 h-4" style={{ color: 'var(--accent)' }} />
+                        <span className="text-xs font-bold text-white">src/services/auth.service.ts</span>
+                        <span className="text-xs text-slate-500 bg-white/5 px-1.5 py-0.5 rounded">MODIFIED</span>
+                      </div>
+                    </div>
+                    <div className="flex-1 overflow-auto p-4 diff-viewer leading-relaxed">
+                       <div className="diff-line opacity-40">
+                         <span className="diff-num">38</span>
+                         <span>public async login(credentials: LoginDto) {'{'}</span>
+                       </div>
+                       <div className="diff-line opacity-40">
+                         <span className="diff-num">39</span>
+                         <span>  const user = await this.db.users.find(credentials.email);</span>
+                       </div>
+                       <div className="diff-line diff-add">
+                         <span className="diff-num">40</span>
+                         <span>+ // AI Evidence: Verification of REQ-101</span>
+                       </div>
+                       <div className="diff-line diff-add">
+                         <span className="diff-num">41</span>
+                         <span>+ if (user.status === 'ACTIVE') {'{'}</span>
+                       </div>
+                       <div className="diff-line diff-add">
+                         <span className="diff-num">42</span>
+                         <span>+   return this.redirectService.toDashboard(user.role);</span>
+                       </div>
+                    </div>
+                  </div>
+                </section>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+        </div>
+
+        <footer className="h-14 mt-auto border-t border-white/10 flex items-center justify-center text-xs font-bold text-slate-600 tracking-widest uppercase opacity-50">
+          Model: Gemini-2.0-Flash • Distributed Agent Protocol • v1.0.8
+        </footer>
+
+        {/* Floating Thinking Status */}
+        {isEvaluating && (
+          <div className="thinking-pill">
+            <div className="status-dot animate-pulse" />
+            <span className="text-xs font-bold text-white tracking-widest uppercase">
+              {currentStep === 1 && 'Retriever: Fetching Context...'}
+              {currentStep === 2 && 'Parser: Extracting Acceptance Criteria...'}
+              {currentStep === 3 && 'Evaluator: Analyzing Logic...'}
+              {currentStep === 4 && 'Verification: Running Tests...'}
+              {currentStep === 5 && 'Synthesis: Finalizing Report...'}
+            </span>
+          </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }
