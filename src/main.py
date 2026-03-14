@@ -1,9 +1,10 @@
 import os
+import re
 import logging
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from dotenv import load_dotenv
 
 # Import our agents and state
@@ -26,9 +27,37 @@ app.add_middleware(
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("evaluator.api")
 
+# Regex patterns for validation
+GITHUB_PR_PATTERN = re.compile(
+    r'^https?://github\.com/[\w.\-]+/[\w.\-]+/pull/\d+/?$'
+)
+JIRA_KEY_PATTERN = re.compile(
+    r'^[A-Z][A-Z0-9_]+-\d+$'
+)
+
 class EvaluationRequest(BaseModel):
     jira_key: str
     pr_url: str
+
+    @field_validator('pr_url')
+    @classmethod
+    def validate_pr_url(cls, v: str) -> str:
+        v = v.strip()
+        if not GITHUB_PR_PATTERN.match(v):
+            raise ValueError(
+                'Invalid GitHub PR URL. Expected format: https://github.com/{owner}/{repo}/pull/{number}'
+            )
+        return v
+
+    @field_validator('jira_key')
+    @classmethod
+    def validate_jira_key(cls, v: str) -> str:
+        v = v.strip().upper()
+        if not JIRA_KEY_PATTERN.match(v):
+            raise ValueError(
+                'Invalid Jira ticket key. Expected format: PROJECT-123 (e.g., ENG-456, PROJ-12)'
+            )
+        return v
 
 @app.get("/")
 async def root():

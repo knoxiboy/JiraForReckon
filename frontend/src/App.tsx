@@ -5,16 +5,11 @@ import {
   Ticket, 
   Play, 
   Loader2, 
-  CheckCircle2, 
-  ChevronRight,
-  Activity,
-  Code,
   Settings,
   History,
   Terminal,
   Cpu,
   Layers,
-  AlertCircle,
   Database,
   FileCheck,
   Code2,
@@ -24,7 +19,8 @@ import {
   Bell,
   Share2,
   FileCode,
-  Check
+  Check,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -46,7 +42,22 @@ interface EvaluationResult {
   logs: string[];
 }
 
+interface HistoryEntry {
+  id: string;
+  jira_key: string;
+  pr_url: string;
+  overall_verdict: string;
+  confidence_score: number;
+  requirements_count: number;
+  timestamp: string;
+}
+
 const API_BASE = 'http://localhost:5000/api';
+const HISTORY_KEY = 'jira_evaluator_history';
+
+// Validation patterns
+const GITHUB_PR_REGEX = /^https?:\/\/github\.com\/[\w.\-]+\/[\w.\-]+\/pull\/\d+\/?$/;
+const JIRA_KEY_REGEX = /^[A-Z][A-Z0-9_]+-\d+$/i;
 
 function App() {
   const [jiraKey, setJiraKey] = useState('ENG-12903-AUTH-FIX');
@@ -54,9 +65,35 @@ function App() {
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
-  const [currentStep, setCurrentStep] = useState(0); // 0: Idle, 1: Retriever, 2: Parser, 3: Evaluator, 4: Verification, 5: Synthesis
+  const [currentStep, setCurrentStep] = useState(0);
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'history'>('dashboard');
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [prError, setPrError] = useState('');
+  const [jiraError, setJiraError] = useState('');
+
+  const validatePrUrl = (url: string) => {
+    if (!url.trim()) return 'PR URL is required';
+    if (!GITHUB_PR_REGEX.test(url.trim())) return 'Must be a valid GitHub PR URL (e.g., https://github.com/owner/repo/pull/123)';
+    return '';
+  };
+
+  const validateJiraKey = (key: string) => {
+    if (!key.trim()) return 'Jira key is required';
+    if (!JIRA_KEY_REGEX.test(key.trim())) return 'Must be a valid Jira key (e.g., PROJ-123, ENG-456)';
+    return '';
+  };
+
+  const isFormValid = !validatePrUrl(prUrl) && !validateJiraKey(jiraKey);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Load history from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(HISTORY_KEY);
+      if (saved) setHistory(JSON.parse(saved));
+    } catch (e) { console.error('Failed to load history', e); }
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -66,6 +103,12 @@ function App() {
 
   const handleEvaluate = async (e: React.FormEvent) => {
     e.preventDefault();
+    const pErr = validatePrUrl(prUrl);
+    const jErr = validateJiraKey(jiraKey);
+    setPrError(pErr);
+    setJiraError(jErr);
+    if (pErr || jErr) return;
+
     setIsEvaluating(true);
     setResult(null);
     setCurrentStep(1);
@@ -87,9 +130,27 @@ function App() {
       if (response.data.logs) {
         setLogs(prev => [...prev, ...response.data.logs, '[SYSTEM] Evaluation complete.']);
       }
+
+      // Save to history
+      const entry: HistoryEntry = {
+        id: Date.now().toString(),
+        jira_key: jiraKey,
+        pr_url: prUrl,
+        overall_verdict: response.data.overall_verdict || 'Unknown',
+        confidence_score: response.data.confidence_score || 0,
+        requirements_count: response.data.requirements?.length || 0,
+        timestamp: new Date().toISOString(),
+      };
+      setHistory(prev => {
+        const updated = [entry, ...prev];
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+        return updated;
+      });
     } catch (error: any) {
       console.error(error);
-      setLogs(prev => [...prev, `[ERROR] ${error.message}`]);
+      const detail = error?.response?.data?.detail;
+      const msg = Array.isArray(detail) ? detail.map((d: any) => d.msg).join('; ') : (detail || error.message);
+      setLogs(prev => [...prev, `[ERROR] ${msg}`]);
       setCurrentStep(0);
     } finally {
       setIsEvaluating(false);
@@ -109,13 +170,14 @@ function App() {
         </div>
 
         <nav className="flex-1 flex flex-col gap-2">
-          <a className="sidebar-link active" href="#">
+          <a className={`sidebar-link ${currentPage === 'dashboard' ? 'active' : ''}`} href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('dashboard'); }}>
             <Layers className="w-4 h-4" />
             <span>Dashboard</span>
           </a>
-          <a className="sidebar-link" href="#">
+          <a className={`sidebar-link ${currentPage === 'history' ? 'active' : ''}`} href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('history'); }}>
             <History className="w-4 h-4" />
             <span>History</span>
+            {history.length > 0 && <span className="text-xs" style={{ marginLeft: 'auto', color: 'var(--accent)' }}>{history.length}</span>}
           </a>
           <a className="sidebar-link" href="#">
             <Terminal className="w-4 h-4" />
@@ -151,8 +213,9 @@ function App() {
           <div className="flex items-center gap-4">
             <button 
               onClick={handleEvaluate}
-              disabled={isEvaluating}
+              disabled={!isFormValid || isEvaluating}
               className="stitch-button-primary"
+              style={(!isFormValid || isEvaluating) ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
             >
               {isEvaluating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
               {isEvaluating ? 'Evaluating...' : 'Run Evaluation'}
@@ -164,32 +227,116 @@ function App() {
         </header>
 
         <div className="p-8 flex flex-col gap-6 mx-auto w-full pb-24" style={{ maxWidth: '1400px' }}>
-          
+
+          {currentPage === 'history' ? (
+            /* ═══ HISTORY PAGE ═══ */
+            <section className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-white">Evaluation History</h2>
+                {history.length > 0 && (
+                  <button
+                    onClick={() => { setHistory([]); localStorage.removeItem(HISTORY_KEY); }}
+                    className="text-xs text-slate-500 hover:text-red-400 transition-all flex items-center gap-1"
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+                  >
+                    <Trash2 className="w-3 h-3" /> Clear All
+                  </button>
+                )}
+              </div>
+
+              {history.length === 0 ? (
+                <div className="glass-card p-12 flex flex-col items-center justify-center gap-3" style={{ minHeight: '300px' }}>
+                  <History className="w-10 h-10 text-slate-600" />
+                  <p className="text-sm text-slate-500 font-medium">No evaluations yet</p>
+                  <p className="text-xs text-slate-600">Run your first evaluation from the Dashboard</p>
+                  <button
+                    onClick={() => setCurrentPage('dashboard')}
+                    className="stitch-button-primary" style={{ marginTop: '0.5rem' }}
+                  >
+                    <Play className="w-3 h-3 fill-current" /> Go to Dashboard
+                  </button>
+                </div>
+              ) : (
+                <div className="glass-card overflow-hidden">
+                  <table className="stitch-table">
+                    <thead>
+                      <tr>
+                        <th>Jira Ticket</th>
+                        <th>PR URL</th>
+                        <th style={{ textAlign: 'center' }}>Verdict</th>
+                        <th style={{ textAlign: 'center' }}>Confidence</th>
+                        <th style={{ textAlign: 'center' }}>Criteria</th>
+                        <th>Date</th>
+                        <th style={{ textAlign: 'right' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {history.map((entry) => (
+                        <tr key={entry.id}>
+                          <td className="font-mono text-xs font-bold" style={{ color: 'var(--accent)' }}>{entry.jira_key}</td>
+                          <td className="text-xs text-slate-400" style={{ maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.pr_url}</td>
+                          <td>
+                            <div className="flex justify-center">
+                              <span className={`status-badge ${entry.overall_verdict === 'Pass' ? 'pass' : 'fail'}`}>
+                                {entry.overall_verdict.toUpperCase()}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="text-center text-sm font-bold text-white">{Math.round(entry.confidence_score * 100)}%</td>
+                          <td className="text-center text-sm text-slate-400">{entry.requirements_count}</td>
+                          <td className="text-xs text-slate-500">{new Date(entry.timestamp).toLocaleString()}</td>
+                          <td className="text-right">
+                            <button
+                              onClick={() => {
+                                const updated = history.filter(h => h.id !== entry.id);
+                                setHistory(updated);
+                                localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+                              }}
+                              className="text-slate-500 hover:text-red-400 transition-all"
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          ) : (
+          <>
+          {/* ═══ DASHBOARD PAGE ═══ */}
           {/* Inputs Section */}
           <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="glass-card p-5 flex flex-col gap-2">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">GitHub Pull Request URL</label>
-              <div className="stitch-input-container">
+              <div className={`stitch-input-container ${prError ? 'border-red-500' : ''}`} style={prError ? { borderColor: 'var(--error)' } : {}}>
                 <Github className="w-4 h-4 text-slate-500" />
                 <input 
                   className="stitch-input" 
                   value={prUrl}
-                  onChange={(e) => setPrUrl(e.target.value)}
-                  placeholder="Enter PR URL..."
+                  onChange={(e) => { setPrUrl(e.target.value); if (prError) setPrError(validatePrUrl(e.target.value)); }}
+                  onBlur={() => setPrError(validatePrUrl(prUrl))}
+                  placeholder="https://github.com/owner/repo/pull/123"
                 />
               </div>
+              {prError && <span className="text-xs" style={{ color: 'var(--error)', marginTop: '-0.25rem' }}>{prError}</span>}
             </div>
             <div className="glass-card p-5 flex flex-col gap-2">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Jira Ticket ID</label>
-              <div className="stitch-input-container">
+              <div className={`stitch-input-container ${jiraError ? 'border-red-500' : ''}`} style={jiraError ? { borderColor: 'var(--error)' } : {}}>
                 <Ticket className="w-4 h-4 text-slate-500" />
                 <input 
                   className="stitch-input" 
                   value={jiraKey}
-                  onChange={(e) => setJiraKey(e.target.value)}
-                  placeholder="Enter Jira ID..."
+                  onChange={(e) => { setJiraKey(e.target.value); if (jiraError) setJiraError(validateJiraKey(e.target.value)); }}
+                  onBlur={() => setJiraError(validateJiraKey(jiraKey))}
+                  placeholder="PROJ-123"
                 />
               </div>
+              {jiraError && <span className="text-xs" style={{ color: 'var(--error)', marginTop: '-0.25rem' }}>{jiraError}</span>}
             </div>
           </section>
 
@@ -394,7 +541,8 @@ function App() {
               </motion.div>
             )}
           </AnimatePresence>
-
+          </>
+          )}
         </div>
 
         <footer className="h-14 mt-auto border-t border-white/10 flex items-center justify-center text-xs font-bold text-slate-600 tracking-widest uppercase opacity-50">
