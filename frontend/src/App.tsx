@@ -16,7 +16,6 @@ import {
   ShieldCheck,
   Eye,
   Search,
-  Bell,
   Share2,
   FileCode,
   Check,
@@ -214,17 +213,6 @@ function App() {
           </a>
         </nav>
 
-        <div className="mt-auto pt-4 border-t border-white/10">
-          <div className="flex items-center gap-3 px-2 py-3">
-            <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden" style={{ border: '2px solid rgba(99, 102, 241, 0.2)' }}>
-               <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" alt="Avatar" />
-            </div>
-            <div className="text-xs">
-              <p className="font-bold text-white">Dev Alex</p>
-              <p className="text-slate-500">Premium Plan</p>
-            </div>
-          </div>
-        </div>
       </aside>
 
       {/* 2. Main Workspace */}
@@ -244,9 +232,6 @@ function App() {
             >
               {isEvaluating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
               {isEvaluating ? 'Evaluating...' : 'Run Evaluation'}
-            </button>
-            <button className="p-2 text-slate-400 hover:text-white transition-all" style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
-              <Bell className="w-5 h-5" />
             </button>
           </div>
         </header>
