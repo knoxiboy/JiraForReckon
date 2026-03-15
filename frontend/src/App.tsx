@@ -50,6 +50,8 @@ interface HistoryEntry {
   confidence_score: number;
   requirements_count: number;
   timestamp: string;
+  logs: string[];
+  fullResult: EvaluationResult;
 }
 
 const API_BASE = 'http://localhost:5000/api';
@@ -66,7 +68,7 @@ function App() {
   const [result, setResult] = useState<EvaluationResult | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'history'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'history' | 'logs'>('dashboard');
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [prError, setPrError] = useState('');
   const [jiraError, setJiraError] = useState('');
@@ -86,6 +88,12 @@ function App() {
   const isFormValid = !validatePrUrl(prUrl) && !validateJiraKey(jiraKey);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const simulationTimeouts = useRef<number[]>([]);
+
+  const clearSimulation = () => {
+    simulationTimeouts.current.forEach(clearTimeout);
+    simulationTimeouts.current = [];
+  };
 
   // Load history from localStorage on mount
   useEffect(() => {
@@ -109,6 +117,7 @@ function App() {
     setJiraError(jErr);
     if (pErr || jErr) return;
 
+    clearSimulation();
     setIsEvaluating(true);
     setResult(null);
     setCurrentStep(1);
@@ -116,9 +125,10 @@ function App() {
 
     try {
       // Simulate pipeline progression for UI visual
-      setTimeout(() => setCurrentStep(2), 2000);
-      setTimeout(() => setCurrentStep(3), 4000);
-      setTimeout(() => setCurrentStep(4), 6000);
+      const t1 = window.setTimeout(() => setCurrentStep(prev => Math.max(prev, 2)), 2000);
+      const t2 = window.setTimeout(() => setCurrentStep(prev => Math.max(prev, 3)), 4000);
+      const t3 = window.setTimeout(() => setCurrentStep(prev => Math.max(prev, 4)), 6000);
+      simulationTimeouts.current = [t1, t2, t3];
 
       const response = await axios.post(`${API_BASE}/evaluate`, {
         jira_key: jiraKey,
@@ -130,6 +140,8 @@ function App() {
       if (response.data.logs) {
         setLogs(prev => [...prev, ...response.data.logs, '[SYSTEM] Evaluation complete.']);
       }
+      clearSimulation();
+      setCurrentStep(6);
 
       // Save to history
       const entry: HistoryEntry = {
@@ -140,6 +152,8 @@ function App() {
         confidence_score: response.data.confidence_score || 0,
         requirements_count: response.data.requirements?.length || 0,
         timestamp: new Date().toISOString(),
+        logs: [...logs, ...response.data.logs, '[SYSTEM] Evaluation complete.'],
+        fullResult: response.data
       };
       setHistory(prev => {
         const updated = [entry, ...prev];
@@ -151,10 +165,20 @@ function App() {
       const detail = error?.response?.data?.detail;
       const msg = Array.isArray(detail) ? detail.map((d: any) => d.msg).join('; ') : (detail || error.message);
       setLogs(prev => [...prev, `[ERROR] ${msg}`]);
+      clearSimulation();
       setCurrentStep(0);
     } finally {
       setIsEvaluating(false);
     }
+  };
+
+  const handleViewHistory = (entry: HistoryEntry) => {
+    setJiraKey(entry.jira_key);
+    setPrUrl(entry.pr_url);
+    setResult(entry.fullResult);
+    setLogs(entry.logs);
+    setCurrentStep(6);
+    setCurrentPage('dashboard');
   };
 
   return (
@@ -179,9 +203,10 @@ function App() {
             <span>History</span>
             {history.length > 0 && <span className="text-xs" style={{ marginLeft: 'auto', color: 'var(--accent)' }}>{history.length}</span>}
           </a>
-          <a className="sidebar-link" href="#">
+          <a className={`sidebar-link ${currentPage === 'logs' ? 'active' : ''}`} href="#" onClick={(e) => { e.preventDefault(); setCurrentPage('logs'); }}>
             <Terminal className="w-4 h-4" />
             <span>Logs</span>
+            {logs.length > 0 && <span className="text-xs" style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}>{logs.length}</span>}
           </a>
           <a className="sidebar-link" href="#">
             <Settings className="w-4 h-4" />
@@ -228,7 +253,38 @@ function App() {
 
         <div className="p-8 flex flex-col gap-6 mx-auto w-full pb-24" style={{ maxWidth: '1400px' }}>
 
-          {currentPage === 'history' ? (
+          {currentPage === 'logs' ? (
+            /* ═══ LOGS PAGE ═══ */
+            <section className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-white">Execution Logs</h2>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setLogs([])}
+                    className="text-xs text-slate-500 hover:text-white transition-all"
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+                  >
+                    Clear Console
+                  </button>
+                </div>
+              </div>
+              <div className="glass-card p-6 font-mono text-sm overflow-auto custom-scrollbar" style={{ height: '70vh', backgroundColor: '#05070a' }}>
+                {logs.length === 0 ? (
+                  <p className="text-slate-600 italic">Console is empty. Run an evaluation to see real-time logs.</p>
+                ) : (
+                  logs.map((log, i) => (
+                    <div key={i} className="py-0.5 border-b border-white/5 last:border-0 hover:bg-white/5 transition-all">
+                      <span className="text-slate-600 mr-3">[{new Date().toLocaleTimeString()}]</span>
+                      <span className={log.startsWith('[ERROR]') ? 'text-red-400' : log.startsWith('[SYSTEM]') ? 'text-blue-400' : 'text-slate-300'}>
+                        {log}
+                      </span>
+                    </div>
+                  ))
+                )}
+                <div ref={scrollRef} />
+              </div>
+            </section>
+          ) : currentPage === 'history' ? (
             /* ═══ HISTORY PAGE ═══ */
             <section className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
@@ -286,17 +342,27 @@ function App() {
                           <td className="text-center text-sm text-slate-400">{entry.requirements_count}</td>
                           <td className="text-xs text-slate-500">{new Date(entry.timestamp).toLocaleString()}</td>
                           <td className="text-right">
-                            <button
-                              onClick={() => {
-                                const updated = history.filter(h => h.id !== entry.id);
-                                setHistory(updated);
-                                localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
-                              }}
-                              className="text-slate-500 hover:text-red-400 transition-all"
-                              style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() => handleViewHistory(entry)}
+                                className="text-slate-500 hover:text-accent transition-all"
+                                title="View in Dashboard"
+                                style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const updated = history.filter(h => h.id !== entry.id);
+                                  setHistory(updated);
+                                  localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+                                }}
+                                className="text-slate-500 hover:text-red-400 transition-all"
+                                style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -408,6 +474,11 @@ function App() {
               <div className="pipeline-node">
                 <div className={`node-circle ${currentStep >= 5 ? 'completed' : ''} ${currentStep === 5 ? 'active' : ''}`}>
                   <FileCheck className={`w-5 h-5 ${currentStep >= 5 ? 'text-white' : 'text-slate-500'}`} />
+                  {currentStep >= 6 && (
+                    <div className="absolute rounded-full border-2 flex items-center justify-center" style={{ bottom: '-4px', right: '-4px', width: '16px', height: '16px', backgroundColor: 'var(--success)', borderColor: 'var(--background)' }}>
+                      <Check className="w-2.5 h-2.5 text-white" />
+                    </div>
+                  )}
                 </div>
                 <span className={`text-xs font-bold ${currentStep >= 5 ? 'text-white' : 'text-slate-500'} tracking-widest uppercase`}>Synthesis</span>
               </div>
@@ -416,7 +487,7 @@ function App() {
 
           {/* Result Summary */}
           <AnimatePresence>
-            {result && (
+            {!isEvaluating && result && currentStep === 6 && (
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-6">
                 <div className={`glass-card p-8 flex items-center justify-between ${result.overall_verdict === 'Pass' ? 'glow-success' : ''}`}>
                   <div className="flex items-center gap-10">
